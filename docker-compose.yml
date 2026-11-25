@@ -1,0 +1,40 @@
+# Orquestração local: PostgreSQL + pgAdmin
+# Subir:  docker compose up -d      |  Derrubar (apaga dados):  docker compose down -v
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: puretouch-db
+    environment:
+      POSTGRES_DB: puretouch
+      POSTGRES_USER: puretouch
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-puretouch123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # scripts em /docker-entrypoint-initdb.d rodam em ordem alfabética na 1ª subida
+      - ./sql/01_ddl.sql:/docker-entrypoint-initdb.d/01_ddl.sql:ro
+      - ./sql/02_procedures.sql:/docker-entrypoint-initdb.d/02_procedures.sql:ro
+      - ./sql/03_seed.sql:/docker-entrypoint-initdb.d/03_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U puretouch -d puretouch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: puretouch-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@puretouch.local
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

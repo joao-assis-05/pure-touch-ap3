@@ -1,0 +1,90 @@
+SET
+--- T1: campanha Black Friday (cursor) com 50% facial / 30% corporal
+04_testes.sql:14: NOTICE:  Promoção criada: id=1
+DO
+          nome          |  preco  | preco_black_friday 
+------------------------+---------+--------------------
+ Preenchimento facial   | 1200.00 |             600.00
+ Toxina Botulínica      |  900.00 |             450.00
+ Harmonização facial    | 2500.00 |            1250.00
+ Preenchimento labial   | 1000.00 |             500.00
+ Preenchimento corporal | 1800.00 |            1260.00
+ Massagem modeladora    |  250.00 |             175.00
+ Drenagem linfática     |  200.00 |             140.00
+ Radiofrequência        |  350.00 |             245.00
+(8 rows)
+
+--- T2: horários livres (profissional 1, Toxina, próximo dia útil)
+       inicio        |         fim         
+---------------------+---------------------
+ 2026-11-26 09:00:00 | 2026-11-26 09:30:00
+ 2026-11-26 09:30:00 | 2026-11-26 10:00:00
+ 2026-11-26 10:00:00 | 2026-11-26 10:30:00
+ 2026-11-26 10:30:00 | 2026-11-26 11:00:00
+ 2026-11-26 11:00:00 | 2026-11-26 11:30:00
+(5 rows)
+
+--- T3: agendamento válido com desconto aplicado
+04_testes.sql:27: NOTICE:  Agendamento 5 criado (esperado: valor_tabela 900, desconto 50%, final 450)
+DO
+ id |   procedimento    |  status  | valor_final 
+----+-------------------+----------+-------------
+  5 | Toxina Botulínica | AGENDADO |      450.00
+(1 row)
+
+--- T4: conflito de horário (mesmo profissional) deve FALHAR
+04_testes.sql:37: NOTICE:  OK (erro esperado): Horário indisponível: já existe atendimento para o profissional ou para o cliente neste período
+DO
+--- T5: profissional que não realiza o procedimento deve FALHAR
+04_testes.sql:45: NOTICE:  OK (erro esperado): O profissional informado não realiza este procedimento
+DO
+--- T6: horário no passado e fora do expediente devem FALHAR
+04_testes.sql:55: NOTICE:  OK (erro esperado): O horário deve estar no futuro
+04_testes.sql:55: NOTICE:  OK (erro esperado): Fora do expediente (segunda a sábado, das 09h às 18h)
+DO
+--- T7: cadastro de menor de idade e CPF duplicado devem FALHAR
+04_testes.sql:65: NOTICE:  OK (erro esperado): Cadastro permitido apenas para maiores de 18 anos
+04_testes.sql:65: NOTICE:  OK (erro esperado): CPF ou e-mail já cadastrado
+DO
+--- T8: cancelamento com antecedência
+04_testes.sql:74: NOTICE:  Agendamento 5 cancelado
+DO
+--- T9: concluir atendimento + pagamento (cria agendamento passado direto) e marcar faltas (cursor)
+INSERT 0 2
+04_testes.sql:87: NOTICE:  Atendimento 7 concluído; faltas marcadas: 1 (esperado 1)
+DO
+--- T10: trilha de auditoria (trigger)
+ agendamento_id | status_anterior | status_novo 
+----------------+-----------------+-------------
+              1 |                 | CONCLUIDO
+              2 |                 | CONCLUIDO
+              3 |                 | CONCLUIDO
+              4 |                 | CANCELADO
+              5 |                 | AGENDADO
+              5 | AGENDADO        | CANCELADO
+              7 |                 | AGENDADO
+              8 |                 | AGENDADO
+              7 | AGENDADO        | CONCLUIDO
+              8 | AGENDADO        | FALTOU
+(10 rows)
+
+--- T11: relatórios (views)
+    mes     |      unidade      | atendimentos | faturamento | ticket_medio 
+------------+-------------------+--------------+-------------+--------------
+ 2026-10-01 | Pure Touch Centro |            1 |     1200.00 |      1200.00
+ 2026-11-01 | Pure Touch Barra  |            1 |      350.00 |       350.00
+ 2026-11-01 | Pure Touch Tijuca |            2 |      450.00 |       225.00
+(3 rows)
+
+      procedimento      |     categoria     | concluidos | cancelados | receita 
+------------------------+-------------------+------------+------------+---------
+ Preenchimento facial   | Estética Facial   |          1 |          0 | 1200.00
+ Radiofrequência        | Estética Corporal |          1 |          0 |  350.00
+ Massagem modeladora    | Estética Corporal |          1 |          0 |  250.00
+ Drenagem linfática     | Estética Corporal |          1 |          0 |  200.00
+ Harmonização facial    | Estética Facial   |          0 |          0 |       0
+ Preenchimento corporal | Estética Corporal |          0 |          0 |       0
+ Preenchimento labial   | Estética Facial   |          0 |          0 |       0
+ Toxina Botulínica      | Estética Facial   |          0 |          2 |       0
+(8 rows)
+

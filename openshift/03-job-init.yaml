@@ -1,0 +1,36 @@
+# Job que aplica os scripts SQL (ConfigMap puretouch-sql) depois que o banco está no ar.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: puretouch-db-init
+  labels: { app: puretouch }
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels: { app: puretouch, tier: init }
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: quay.io/sclorg/postgresql-15-c9s:latest
+          envFrom:
+            - secretRef:
+                name: puretouch-db
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              export PGPASSWORD="$POSTGRESQL_PASSWORD"
+              until pg_isready -h puretouch-db -p 5432; do echo "aguardando banco..."; sleep 3; done
+              for f in 01_ddl 02_procedures 03_seed; do
+                echo ">> aplicando $f.sql"
+                psql -h puretouch-db -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE" -v ON_ERROR_STOP=1 -f /sql/$f.sql
+              done
+              echo ">> banco inicializado"
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+      volumes:
+        - name: sql
+          configMap:
+            name: puretouch-sql

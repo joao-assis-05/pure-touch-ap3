@@ -1,0 +1,29 @@
+# Rotina diária de fechamento: chama sp_marcar_faltas todo dia às 21h (America/Sao_Paulo).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: puretouch-fechamento-diario
+  labels: { app: puretouch }
+spec:
+  schedule: "0 21 * * *"
+  timeZone: "America/Sao_Paulo"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: psql
+              image: quay.io/sclorg/postgresql-15-c9s:latest
+              envFrom:
+                - secretRef:
+                    name: puretouch-db
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  export PGPASSWORD="$POSTGRESQL_PASSWORD"
+                  psql -h puretouch-db -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE" \
+                       -c "SET search_path TO pure_touch; CALL sp_marcar_faltas();"

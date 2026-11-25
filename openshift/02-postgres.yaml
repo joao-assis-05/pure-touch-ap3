@@ -1,0 +1,67 @@
+# PostgreSQL no OpenShift (imagem sclorg, compatível com UID aleatório do OpenShift)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: puretouch-db-data
+  labels: { app: puretouch }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: puretouch-db
+  labels: { app: puretouch, tier: db }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # volume RWO: nunca 2 pods ao mesmo tempo
+  selector:
+    matchLabels: { app: puretouch, tier: db }
+  template:
+    metadata:
+      labels: { app: puretouch, tier: db }
+    spec:
+      containers:
+        - name: postgresql
+          image: quay.io/sclorg/postgresql-15-c9s:latest
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: puretouch-db
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pg_isready -h 127.0.0.1 -p 5432"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: puretouch-db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: puretouch-db
+  labels: { app: puretouch }
+spec:
+  selector: { app: puretouch, tier: db }
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432
